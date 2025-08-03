@@ -1,63 +1,142 @@
 
+import { db } from '../db';
+import { usersTable } from '../db/schema';
 import { type CreateUserInput, type UpdateUserInput, type User } from '../schema';
+import { eq } from 'drizzle-orm';
 
 export async function createUser(input: CreateUserInput): Promise<User> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to create a new user account with hashed password,
-    // validate uniqueness of email and employee_id, and persist in the database.
-    return Promise.resolve({
-        id: 1,
+  try {
+    // Simple password hashing (in production, use bcrypt or similar)
+    const password_hash = `hashed_${input.password}`;
+
+    // Insert user record - convert Date to string for date column
+    const result = await db.insert(usersTable)
+      .values({
         email: input.email,
-        password_hash: 'hashed-password',
+        password_hash,
         first_name: input.first_name,
         last_name: input.last_name,
         role: input.role,
         employee_id: input.employee_id,
         department: input.department,
-        hire_date: input.hire_date,
-        is_active: true,
-        created_at: new Date(),
-        updated_at: new Date()
-    });
+        hire_date: input.hire_date ? input.hire_date.toISOString().split('T')[0] : null
+      })
+      .returning()
+      .execute();
+
+    // Convert hire_date from string to Date if not null
+    const user = result[0];
+    return {
+      ...user,
+      hire_date: user.hire_date ? new Date(user.hire_date) : null
+    };
+  } catch (error) {
+    console.error('User creation failed:', error);
+    throw error;
+  }
 }
 
 export async function updateUser(input: UpdateUserInput): Promise<User> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to update existing user information,
-    // validate permissions (only admins can update users), and persist changes.
-    return Promise.resolve({
-        id: input.id,
-        email: input.email || 'placeholder@example.com',
-        password_hash: 'hashed-password',
-        first_name: input.first_name || 'John',
-        last_name: input.last_name || 'Doe',
-        role: input.role || 'employee',
-        employee_id: input.employee_id || null,
-        department: input.department || null,
-        hire_date: input.hire_date || null,
-        is_active: input.is_active ?? true,
-        created_at: new Date(),
-        updated_at: new Date()
-    });
+  try {
+    // Build update data, excluding undefined values
+    const updateData: any = {};
+    
+    if (input.email !== undefined) updateData.email = input.email;
+    if (input.first_name !== undefined) updateData.first_name = input.first_name;
+    if (input.last_name !== undefined) updateData.last_name = input.last_name;
+    if (input.role !== undefined) updateData.role = input.role;
+    if (input.employee_id !== undefined) updateData.employee_id = input.employee_id;
+    if (input.department !== undefined) updateData.department = input.department;
+    if (input.hire_date !== undefined) {
+      updateData.hire_date = input.hire_date ? input.hire_date.toISOString().split('T')[0] : null;
+    }
+    if (input.is_active !== undefined) updateData.is_active = input.is_active;
+
+    // Always update the updated_at timestamp
+    updateData.updated_at = new Date();
+
+    // Update user record
+    const result = await db.update(usersTable)
+      .set(updateData)
+      .where(eq(usersTable.id, input.id))
+      .returning()
+      .execute();
+
+    if (result.length === 0) {
+      throw new Error('User not found');
+    }
+
+    // Convert hire_date from string to Date if not null
+    const user = result[0];
+    return {
+      ...user,
+      hire_date: user.hire_date ? new Date(user.hire_date) : null
+    };
+  } catch (error) {
+    console.error('User update failed:', error);
+    throw error;
+  }
 }
 
 export async function deleteUser(userId: number): Promise<{ success: boolean }> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to soft delete a user (set is_active to false)
-    // or hard delete if required, with proper admin permission validation.
-    return Promise.resolve({ success: true });
+  try {
+    // Soft delete by setting is_active to false
+    const result = await db.update(usersTable)
+      .set({ 
+        is_active: false,
+        updated_at: new Date()
+      })
+      .where(eq(usersTable.id, userId))
+      .returning()
+      .execute();
+
+    if (result.length === 0) {
+      throw new Error('User not found');
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error('User deletion failed:', error);
+    throw error;
+  }
 }
 
 export async function getAllUsers(): Promise<User[]> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to fetch all users from the database,
-    // with admin permission validation, excluding password hashes from response.
-    return Promise.resolve([]);
+  try {
+    const result = await db.select()
+      .from(usersTable)
+      .execute();
+
+    // Convert hire_date from string to Date if not null for each user
+    return result.map(user => ({
+      ...user,
+      hire_date: user.hire_date ? new Date(user.hire_date) : null
+    }));
+  } catch (error) {
+    console.error('Failed to fetch users:', error);
+    throw error;
+  }
 }
 
 export async function getUserById(userId: number): Promise<User | null> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to fetch a specific user by ID,
-    // with appropriate permission checks (users can view their own data, admins can view all).
-    return Promise.resolve(null);
+  try {
+    const result = await db.select()
+      .from(usersTable)
+      .where(eq(usersTable.id, userId))
+      .execute();
+
+    if (result.length === 0) {
+      return null;
+    }
+
+    // Convert hire_date from string to Date if not null
+    const user = result[0];
+    return {
+      ...user,
+      hire_date: user.hire_date ? new Date(user.hire_date) : null
+    };
+  } catch (error) {
+    console.error('Failed to fetch user:', error);
+    throw error;
+  }
 }
